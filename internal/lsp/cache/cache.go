@@ -6,7 +6,10 @@ package cache
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha1"
 	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -17,6 +20,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -207,7 +211,7 @@ type packageStat struct {
 	total     int64
 }
 
-func (c *Cache) PackageStats(withNames bool) template.HTML {
+func (c *Cache) PackageStats(withNames bool, elidePfx string) template.HTML {
 	var packageStats []packageStat
 	c.store.DebugOnlyIterate(func(k, v interface{}) {
 		switch k.(type) {
@@ -251,7 +255,9 @@ func (c *Cache) PackageStats(withNames bool) template.HTML {
 	var printedCost int64
 	for _, stat := range packageStats {
 		name := stat.id
-		if !withNames {
+		if !withNames && len(elidePfx) > 0 {
+			name = hashPath(name, elidePfx)
+		} else if !withNames {
 			name = "-"
 		}
 		html += fmt.Sprintf("<tr><td>%v (%v)</td><td>%v = %v + %v + %v + %v</td></tr>\n", name, stat.mode,
@@ -263,6 +269,42 @@ func (c *Cache) PackageStats(withNames bool) template.HTML {
 	}
 	html += "</table>\n"
 	return template.HTML(html)
+}
+
+//nonce for hashPath. overkill
+var nonce []byte
+
+func init() {
+	nonce = make([]byte, 32)
+	_, _ = rand.Read(nonce)
+}
+
+//replaces the prefix in the path with repo; for each additional element, replaces with 5 chars of a hash.
+func hashPath(name packageID, pfx string) packageID {
+	if !strings.HasPrefix(string(name), pfx) {
+		return name
+	}
+	testpkg := false
+	tohash := strings.TrimPrefix(string(name), pfx)
+	if strings.HasSuffix(tohash, ".test") {
+		testpkg = true
+		tohash = strings.TrimSuffix(tohash, ".test")
+	}
+	elems := strings.Split(tohash, string(os.PathSeparator))
+	sumIn := nonce
+	for i, elem := range elems {
+		sumIn = append(sumIn, []byte(elem)...)
+		sum := sha1.Sum(sumIn)
+		enc := base64.URLEncoding.EncodeToString(sum[:])
+		elems[i] = enc[:5]
+	}
+	path := []string{"repo"}
+	path = append(path, elems...)
+	joined := strings.Join(path, string(os.PathSeparator))
+	if testpkg {
+		joined += ".test"
+	}
+	return packageID(joined)
 }
 
 func astCost(f *ast.File) int64 {

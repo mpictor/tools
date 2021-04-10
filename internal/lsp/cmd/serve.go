@@ -34,6 +34,7 @@ type Serve struct {
 	IdleTimeout time.Duration `flag:"listen.timeout" help:"when used with -listen, shut down the server when there are no connected clients for this duration"`
 	Trace       bool          `flag:"rpc.trace" help:"print the full rpc trace in lsp inspector format"`
 	Debug       string        `flag:"debug" help:"serve debug information on the supplied address"`
+	Elide       string        `flag:"elide" help:"when writing cache stats zip, obfuscate package names that have this prefix"`
 
 	RemoteListenTimeout time.Duration `flag:"remote.listen.timeout" help:"when used with -remote=auto, the -listen.timeout value used to start the daemon"`
 	RemoteDebug         string        `flag:"remote.debug" help:"when used with -remote=auto, the -debug value used to start the daemon"`
@@ -74,6 +75,7 @@ func (s *Serve) Run(ctx context.Context, args ...string) error {
 		defer closeLog()
 		di.ServerAddress = s.Address
 		di.DebugAddress = s.Debug
+		di.Elide = s.Elide
 		di.Serve(ctx)
 		di.MonitorMemory(ctx)
 	}

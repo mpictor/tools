@@ -57,6 +57,7 @@ type Instance struct {
 	ListenedDebugAddress string
 	Workdir              string
 	OCAgentConfig        string
+	Elide                string
 
 	LogWriter io.Writer
 
@@ -507,7 +508,7 @@ func (i *Instance) writeMemoryDebug(threshold uint64, withNames bool) error {
 		if err != nil {
 			return err
 		}
-		if _, err := cf.Write([]byte(cache.PackageStats(withNames))); err != nil {
+		if _, err := cf.Write([]byte(cache.PackageStats(withNames, i.Elide))); err != nil {
 			return err
 		}
 	}
