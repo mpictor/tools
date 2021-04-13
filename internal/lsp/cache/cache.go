@@ -279,13 +279,30 @@ func init() {
 	_, _ = rand.Read(nonce)
 }
 
-//replaces the prefix in the path with repo; for each additional element, replaces with 5 chars of a hash.
+// Replaces the prefix in the path with 'elided'; for each additional element, replaces with 5 chars of a hash.
 func hashPath(name packageID, pfx string) packageID {
 	if !strings.HasPrefix(string(name), pfx) {
 		return name
 	}
+	elems := strings.SplitN(strings.TrimSuffix(string(name), "]"), "[", 2)
+	if len(elems) == 2 {
+		elems[0] = strings.TrimSpace(elems[0])
+		elems[1] = strings.TrimSpace(elems[1])
+		if strings.HasSuffix(elems[1], ".test") && strings.TrimSuffix(elems[1], ".test") == elems[0] {
+			//same pkg but with .test appended for latter - only need to calculate once
+			hashed := hashPath1(elems[0], pfx)
+			return packageID(fmt.Sprintf("%s [%s.test]", hashed, hashed))
+		}
+		p1 := hashPath1(elems[0], pfx)
+		p2 := hashPath1(elems[1], pfx)
+		return packageID(fmt.Sprintf("%s [%s]", p1, p2))
+	}
+	return packageID(hashPath1(string(name), pfx))
+}
+
+func hashPath1(name string, pfx string) string {
+	tohash := strings.TrimPrefix(name, pfx)
 	testpkg := false
-	tohash := strings.TrimPrefix(string(name), pfx)
 	if strings.HasSuffix(tohash, ".test") {
 		testpkg = true
 		tohash = strings.TrimSuffix(tohash, ".test")
@@ -293,18 +310,20 @@ func hashPath(name packageID, pfx string) packageID {
 	elems := strings.Split(tohash, string(os.PathSeparator))
 	sumIn := nonce
 	for i, elem := range elems {
+		//For each path element's hash, we also use previous path elements. This means
+		//'mypkg' in path/to/mypkg will have a different hash than in otherpath/to/mypkg.
 		sumIn = append(sumIn, []byte(elem)...)
 		sum := sha1.Sum(sumIn)
 		enc := base64.URLEncoding.EncodeToString(sum[:])
 		elems[i] = enc[:5]
 	}
-	path := []string{"repo"}
+	path := []string{"elided"}
 	path = append(path, elems...)
 	joined := strings.Join(path, string(os.PathSeparator))
 	if testpkg {
 		joined += ".test"
 	}
-	return packageID(joined)
+	return joined
 }
 
 func astCost(f *ast.File) int64 {
